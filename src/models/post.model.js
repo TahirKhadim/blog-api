@@ -15,6 +15,10 @@ const postSchema=new Schema({
         type:String,
         require:true
     },
+    image:{
+        type:String,
+        require:true
+    },
     owner:{
         type:Schema.Types.ObjectId,
         ref:"User"

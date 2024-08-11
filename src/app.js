@@ -6,8 +6,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const app = express();
-
-console.log("CORS_ORIGIN:", process.env.CORS_ORIGIN);
+console.log(process.env.MONGODB_URI);
 
 app.use(
   cors({
@@ -32,9 +31,12 @@ app.use(
 app.use(express.static("public"));
 app.use(cookieParser());
 
-app.get("/jokes", (req, res) => {
-  const jokes = "abc";
-  res.send(jokes);
-});
+import userrouter from "./routes/user.routes.js";
+
+app.use("/api/v1/users", userrouter);
+
+import postrouter from "./routes/posts.route.js";
+
+app.use("/api/v1/posts", postrouter);
 
 export { app };
