@@ -11,9 +11,9 @@ import { upload } from "../middleware/multer.middleware.js";
 import { verifyjwt } from "../middleware/auth.middleware.js";
 
 const router = Router();
-router.use(verifyjwt);
 
 router.route("/posts").post(
+  verifyjwt,
   upload.fields([
     {
       name: "image",
@@ -34,7 +34,17 @@ router.route("/posts/:id").post(
 );
 
 router.route("/posts").get(readPost);
-router.route("/posts/:id").get(getpostbyUser);
-router.route("posts").post(deletePost);
+router.route("/posts/:id").get(verifyjwt, getpostbyUser);
+router.route("/posts/:id").delete(verifyjwt, deletePost);
+router.route("/posts/:id").put(
+  verifyjwt,
+  upload.fields([
+    {
+      name: "image",
+      maxCount: 1,
+    },
+  ]),
+  updatePost
+);
 
 export default router;

@@ -5,6 +5,7 @@ import { Post } from "../models/post.model.js";
 import { apiResponse } from "../utils/apiResponse.js";
 import { User } from "../models/user.model.js";
 import { isValidObjectId } from "mongoose";
+import mongoose from "mongoose";
 
 const createPost = asyncHandler(async (req, res) => {
   // const user = await User.findById(req.user?._id);
@@ -78,43 +79,53 @@ const createPost = asyncHandler(async (req, res) => {
     .json(new apiResponse(200, postcreated, "Post created successfully"));
 });
 
-const readPost=asyncHandler(async(req,res)=>{
+const readPost = asyncHandler(async (req, res) => {
   try {
-    const post=await Post.find();
-    if(post.length===0){
-      throw new apiError(404, "no post found")
+    const posts = await Post.find();
+    if (posts.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "No posts found" });
     }
-    return res.status(200),json(new apiResponse(200,post,"all post fetched successfully"))
+    return res.status(200).json({
+      success: true,
+      data: posts,
+      message: "All posts fetched successfully",
+    });
   } catch (error) {
-    console.log(error)
+    console.error("Error fetching posts:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
   }
-})
+});
 
-const getpostbyUser=asyncHandler(async(req,res)=>{
-const {userId}=req.params
-if(!isValidObjectId(userId)){
-  throw new apiError(404,"Invalid user id")
-}
+const getpostbyUser = asyncHandler(async (req, res) => {
+  const { id } = req.params; // Use `id` to match the route definition
 
-const post=await Post.find({owner:userId})
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new apiError(404, "Invalid user id");
+  }
 
-if(post.length===0){
-  throw new apiError(404," no post found againt user")
-}
+  const posts = await Post.find({ owner: new mongoose.Types.ObjectId(id) });
 
-return res.status(200).json(new apiResponse(200,post,"post by user fetched"))
-})
+  if (posts.length === 0) {
+    throw new apiError(404, "No posts found for this user");
+  }
+
+  return res
+    .status(200)
+    .json(new apiResponse(200, posts, "Posts by user fetched"));
+});
 
 const updatePost = asyncHandler(async (req, res) => {
-  const { postId } = req.params;
+  const { id } = req.params;
 
   // Check if postId is a valid ObjectId
-  if (!isValidObjectId(postId)) {
+  if (!isValidObjectId(id)) {
     throw new apiError(400, "Invalid post ID");
   }
 
   // Find the post by ID
-  const post = await Post.findById(postId);
+  const post = await Post.findById(new mongoose.Types.ObjectId(id));
   if (!post) {
     throw new apiError(404, "Post not found");
   }
@@ -122,7 +133,10 @@ const updatePost = asyncHandler(async (req, res) => {
   const { title, description, writtenby } = req.body;
 
   // Ensure at least one field is being updated
-  if (![title, description, writtenby].some((field) => field && field.trim())==='') {
+  if (
+    ![title, description, writtenby].some((field) => field && field.trim()) ===
+    ""
+  ) {
     throw new apiError(400, "No fields provided to update");
   }
 
@@ -145,7 +159,7 @@ const updatePost = asyncHandler(async (req, res) => {
 
   // Update the post with the new data
   const updatedPost = await Post.findByIdAndUpdate(
-    postId,
+    id,
     {
       $set: {
         title: title?.trim() || post.title,
@@ -162,16 +176,33 @@ const updatePost = asyncHandler(async (req, res) => {
     .json(new apiResponse(200, updatedPost, "Post updated successfully"));
 });
 
+const deletePost = asyncHandler(async (req, res) => {
+  const { id } = req.params;
 
-const deletePost=asyncHandler(async(req,res)=>{
-  const{postId}=req.params
-  if(!isValidObjectId(postId)){
-throw new apiError(404,"post id required")
+  // Validate the post ID
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new apiError(404, "Post ID is invalid");
   }
-if(Post.owner?.toString()!==req.user?._id.toString()){
-  throw new apiError(409," your are not the owner")
-}
-  await Post.findByIdAndDelete(postId)
-})
 
-export { createPost,updatePost,deletePost,readPost,getpostbyUser };
+  // Find the post by ID
+  const post = await Post.findById(id);
+
+  if (!post) {
+    throw new apiError(404, "Post not found");
+  }
+
+  // Check if the authenticated user is the owner of the post
+  if (post.owner.toString() !== req.user._id.toString()) {
+    throw new apiError(403, "You are not the owner of this post");
+  }
+
+  // Delete the post
+  await Post.findByIdAndDelete(id);
+
+  // Return a success response
+  return res
+    .status(200)
+    .json(new apiResponse(200, null, "Post deleted successfully"));
+});
+
+export { createPost, updatePost, deletePost, readPost, getpostbyUser };

@@ -2,6 +2,9 @@ import { User } from "../models/user.model.js";
 import { apiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import jwt from "jsonwebtoken";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 export const verifyjwt = asyncHandler(async (req, _, next) => {
   try {
@@ -17,7 +20,7 @@ export const verifyjwt = asyncHandler(async (req, _, next) => {
     const decodedToken = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
 
     const user = await User.findById(decodedToken?._id).select(
-      "-password -refreshToken"
+      "-password -refreshtoken"
     );
 
     if (!user) {
