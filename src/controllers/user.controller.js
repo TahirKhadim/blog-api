@@ -209,9 +209,16 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
 });
 
 const getCurrentUser = asyncHandler(async (req, res) => {
+  const userId = new mongoose.Types.ObjectId(req.user._id);
+
+  // Fetch user from the database (assuming a User model)
+  const user = await User.findById(userId).select(
+    "username fullname email avatar coverimage"
+  ); // Add fields as needed
+
   return res
     .status(200)
-    .json(new apiResponse(200, req.user._id, "get user successfully"));
+    .json(new apiResponse(200, user, "User retrieved successfully"));
 });
 
 const changePassword = asyncHandler(async (req, res) => {
@@ -280,50 +287,64 @@ const updateUserInfo = asyncHandler(async (req, res) => {
 });
 
 const changeAvatar = asyncHandler(async (req, res) => {
-  const avatarlocalpath = req.file.avatar[0].path;
+  // Access the file path
+  const avatarlocalpath = req.file.path;
   if (!avatarlocalpath) {
-    throw new apiError(404, "image not found");
+    throw new apiError(404, "Image not found");
   }
+
+  // Upload the image to Cloudinary
   const avatar = await uploadOnCloudinary(avatarlocalpath);
   if (!avatar) {
-    throw new apiError(400, "not uploaded on cloudnary");
+    throw new apiError(400, "Not uploaded on Cloudinary");
   }
+
+  // Find the user by ID and update the avatar URL
+  const userId = req.user._id; // Assuming req.user contains the authenticated user's data
   const user = await User.findByIdAndUpdate(
-    req,
-    user._id,
+    userId,
     {
       $set: {
         avatar: avatar.url,
       },
     },
-    { new: true }.select("-password")
-  );
+    { new: true }
+  ).select("-password");
+
+  if (!user) {
+    throw new apiError(404, "User not found");
+  }
+
   return res
     .status(200)
-    .json(new apiResponse(200, user, "avatar updated successfully!!"));
+    .json(new apiResponse(200, user, "Avatar updated successfully!!"));
 });
-const changecoverimager = asyncHandler(async (req, res) => {
-  const cimagelocalpath = req.file.coverimage[0].path;
-  if (!cimagelocalpath) {
-    throw new apiError(404, "image not found");
+
+const changecoverimage = asyncHandler(async (req, res) => {
+  if (!req.file) {
+    throw new apiError(400, "No file uploaded");
   }
+
+  const cimagelocalpath = req.file.path; // Directly access req.file.path
   const coverimage = await uploadOnCloudinary(cimagelocalpath);
+
   if (!coverimage) {
-    throw new apiError(400, "not uploaded on cloudnary");
+    throw new apiError(400, "Not uploaded to Cloudinary");
   }
+
   const user = await User.findByIdAndUpdate(
-    req,
-    user._id,
+    req.user._id,
     {
       $set: {
         coverimage: coverimage.url,
       },
     },
-    { new: true }.select("-password")
+    { new: true, select: "-password" } // Ensure `select` is used correctly
   );
+
   return res
     .status(200)
-    .json(new apiResponse(200, user, "coverimage updated successfully!!"));
+    .json(new apiResponse(200, user, "Cover image updated successfully!"));
 });
 
 export {
@@ -333,7 +354,7 @@ export {
   getCurrentUser,
   changeAvatar,
   changePassword,
-  changecoverimager,
+  changecoverimage,
   updateUserInfo,
   refreshAccessToken,
 };

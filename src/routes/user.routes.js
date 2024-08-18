@@ -1,13 +1,13 @@
 import {
   changeAvatar,
-  changecoverimager,
+  changecoverimage,
   changePassword,
   getCurrentUser,
   refreshAccessToken,
   Register,
   updateUserInfo,
   loginUser,
-  logoutuser
+  logoutuser,
 } from "../controllers/user.controller.js";
 import { Router } from "express";
 
@@ -41,6 +41,6 @@ router.route("/update-account").patch(verifyjwt, updateUserInfo);
 router.route("/avatar").patch(verifyjwt, upload.single("avatar"), changeAvatar);
 router
   .route("/cover-image")
-  .patch(verifyjwt, upload.single("coverImage"), changecoverimager);
+  .patch(verifyjwt, upload.single("coverimage"), changecoverimage);
 
 export default router;

@@ -8,37 +8,196 @@ import { isValidObjectId } from "mongoose";
 import mongoose from "mongoose";
 
 const createPost = asyncHandler(async (req, res) => {
-  // const user = await User.findById(req.user?._id);
-  // console.log(user);
+  try {
+    console.log("Request Body:", req.body);
+    console.log("Request Files:", req.file);
 
-  const { title, description, writtenby } = req.body;
-  console.log(title);
-  if ([title, description, writtenby].some((field) => field.trim() === "")) {
-    throw new apiError(400, "These are required fields");
+    const { title, description, writtenby } = req.body;
+
+    if (!title || !description || !writtenby) {
+      throw new apiError(400, "These are required fields");
+    }
+
+    const imagelocalpath = req.file?.path;
+    if (!imagelocalpath) {
+      throw new apiError(400, "Image is required");
+    }
+
+    const image = await uploadOnCloudinary(imagelocalpath);
+    if (!image) {
+      throw new apiError(500, "Image upload failed");
+    }
+
+    const post = await Post.create({
+      title,
+      description,
+      writtenby,
+      image: image.url,
+      owner: req.user?._id,
+    });
+    console.log("post data", post);
+
+    const postcreated = await Post.aggregate([
+      {
+        $match: { _id: post?._id },
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "owner",
+          foreignField: "_id",
+          as: "ownerDetails",
+        },
+      },
+      { $unwind: "$ownerDetails" },
+      {
+        $project: {
+          title: 1,
+          description: 1,
+          writtenBy: 1,
+          image: 1,
+          owner: {
+            _id: "$ownerDetails._id",
+            username: "$ownerDetails.username",
+            fullname: "$ownerDetails.fullname",
+            email: "$ownerDetails.email",
+            avatar: "$ownerDetails.avatar",
+          },
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      },
+    ]);
+
+    if (!postcreated || postcreated.length === 0) {
+      throw new apiError(500, "Post not created or owner details not found");
+    }
+
+    console.log("Post Created with Owner Details:", postcreated);
+
+    return res
+      .status(200)
+      .json(new apiResponse(200, postcreated, "Post created successfully"));
+  } catch (error) {
+    console.error("Server Error:", error);
+    return res
+      .status(error.status || 500)
+      .json({ message: error.message || "Internal Server Error" });
+  }
+});
+
+const readPost = asyncHandler(async (req, res) => {
+  try {
+    const posts = await Post.aggregate([
+      {
+        $lookup: {
+          from: "likes",
+          localField: "_id",
+          foreignField: "post",
+          as: "likes",
+        },
+      },
+      {
+        $addFields: {
+          likesCount: { $size: "$likes" },
+        },
+      },
+      {
+        $project: {
+          title: 1,
+          description: 1,
+          writtenby: 1,
+          image: 1,
+          likesCount: 1,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      },
+    ]);
+
+    if (posts.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "No posts found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: posts,
+      message: "All posts fetched successfully",
+    });
+  } catch (error) {
+    console.error("Error fetching posts:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+const getpostbyUser = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new apiError(404, "Invalid user ID");
   }
 
-  const imagelocalpath = req.files.image[0].path;
-  if (!imagelocalpath) {
-    throw new apiError(400, "Image is required");
-  }
-  console.log(req.files);
-
-  const image = await uploadOnCloudinary(imagelocalpath);
-  if (!image) {
-    throw new apiError(500, "Image upload failed");
-  }
-
-  const post = await Post.create({
-    title,
-    description,
-    writtenby,
-    image: image.url,
-    owner: req.user?._id,
-  });
-  console.log("post data", post);
-  const postcreated = await Post.aggregate([
+  const posts = await Post.aggregate([
     {
-      $match: { _id: post?._id },
+      $match: { owner: new mongoose.Types.ObjectId(id) },
+    },
+    {
+      $lookup: {
+        from: "likes",
+        localField: "_id",
+        foreignField: "post",
+        as: "likes",
+      },
+    },
+    {
+      $addFields: {
+        likesCount: { $size: "$likes" },
+      },
+    },
+    {
+      $project: {
+        title: 1,
+        description: 1,
+        writtenby: 1,
+        image: 1,
+        likesCount: 1,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    },
+  ]);
+
+  if (posts.length === 0) {
+    throw new apiError(404, "No posts found for this user");
+  }
+
+  return res
+    .status(200)
+    .json(new apiResponse(200, posts, "Posts by user fetched successfully"));
+});
+const getpostbyPostId = asyncHandler(async (req, res) => {
+  const { id } = req.params; // Use `id` to match the route definition
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new apiError(404, "Invalid post ID");
+  }
+
+  const post = await Post.aggregate([
+    { $match: { _id: new mongoose.Types.ObjectId(id) } },
+    {
+      $lookup: {
+        from: "likes", // Collection name
+        localField: "_id",
+        foreignField: "post",
+        as: "likes",
+      },
+    },
+    {
+      $addFields: {
+        likesCount: { $size: "$likes" }, // Count the number of likes
+      },
     },
     {
       $lookup: {
@@ -62,58 +221,20 @@ const createPost = asyncHandler(async (req, res) => {
           email: "$ownerDetails.email",
           avatar: "$ownerDetails.avatar",
         },
+        likesCount: 1,
         createdAt: 1,
         updatedAt: 1,
       },
     },
   ]);
 
-  if (!postcreated || postcreated.length === 0) {
-    throw new apiError(500, "Post not created or owner details not found");
-  }
-
-  console.log("Post Created with Owner Details:", postcreated);
-
-  return res
-    .status(200)
-    .json(new apiResponse(200, postcreated, "Post created successfully"));
-});
-
-const readPost = asyncHandler(async (req, res) => {
-  try {
-    const posts = await Post.find();
-    if (posts.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "No posts found" });
-    }
-    return res.status(200).json({
-      success: true,
-      data: posts,
-      message: "All posts fetched successfully",
-    });
-  } catch (error) {
-    console.error("Error fetching posts:", error);
-    return res.status(500).json({ success: false, message: "Server error" });
-  }
-});
-
-const getpostbyUser = asyncHandler(async (req, res) => {
-  const { id } = req.params; // Use `id` to match the route definition
-
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    throw new apiError(404, "Invalid user id");
-  }
-
-  const posts = await Post.find({ owner: new mongoose.Types.ObjectId(id) });
-
-  if (posts.length === 0) {
-    throw new apiError(404, "No posts found for this user");
+  if (!post || post.length === 0) {
+    throw new apiError(404, "Post not found");
   }
 
   return res
     .status(200)
-    .json(new apiResponse(200, posts, "Posts by user fetched"));
+    .json(new apiResponse(200, post[0], "Post fetched successfully"));
 });
 
 const updatePost = asyncHandler(async (req, res) => {
@@ -197,7 +318,9 @@ const deletePost = asyncHandler(async (req, res) => {
   }
 
   // Delete the post
-  await Post.findByIdAndDelete(id);
+  await post.deleteOne();
+
+  await Like.deleteMany({ post: id });
 
   // Return a success response
   return res
@@ -205,4 +328,11 @@ const deletePost = asyncHandler(async (req, res) => {
     .json(new apiResponse(200, null, "Post deleted successfully"));
 });
 
-export { createPost, updatePost, deletePost, readPost, getpostbyUser };
+export {
+  createPost,
+  updatePost,
+  deletePost,
+  readPost,
+  getpostbyUser,
+  getpostbyPostId,
+};
